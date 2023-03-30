@@ -114,7 +114,8 @@ namespace MasterDevs.ChromeDevTools
                 return;
             }
             var handlerKey = type.FullName;
-            if (_handlers.TryGetValue(handlerKey, out ConcurrentBag<Action<object>> handlers))
+            ConcurrentBag<Action<object>> handlers = null;
+            if (_handlers.TryGetValue(handlerKey, out handlers))
             {
                 var localHandlers = handlers.ToArray();
                 foreach (var handler in localHandlers)
@@ -138,7 +139,8 @@ namespace MasterDevs.ChromeDevTools
         private void HandleResponse(ICommandResponse response)
         {
             if (null == response) return;
-            if (_requestWaitHandles.TryGetValue(response.Id, out ManualResetEventSlim requestMre))
+            ManualResetEventSlim requestMre;
+            if (_requestWaitHandles.TryGetValue(response.Id, out requestMre))
             {
                 _responses.AddOrUpdate(response.Id, id => response, (key, value) => response);
                 requestMre.Set();
@@ -172,7 +174,8 @@ namespace MasterDevs.ChromeDevTools
                 EnsureInit();
                 _webSocket.SendMessage(requestString);
                 requestResetEvent.Wait(cancellationToken);
-                _responses.TryRemove(command.Id, out ICommandResponse response);
+                ICommandResponse response = null;
+                _responses.TryRemove(command.Id, out response);
                 _requestWaitHandles.TryRemove(command.Id, out requestResetEvent);
                 return response;
             });
@@ -205,12 +208,14 @@ namespace MasterDevs.ChromeDevTools
 
         private void OnWebSocketMessageReceived(string message)
         {
-            if (TryGetCommandResponse(message, out ICommandResponse response))
+            ICommandResponse response;
+            if (TryGetCommandResponse(message, out response))
             {
                 HandleResponse(response);
                 return;
             }
-            if (TryGetEvent(message, out IEvent evnt))
+            IEvent evnt;
+            if (TryGetEvent(message, out evnt))
             {
                 HandleEvent(evnt);
                 return;
