@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using WebSocket4Net;
 
 namespace MasterDevs.ChromeDevTools
 {
@@ -16,12 +15,10 @@ namespace MasterDevs.ChromeDevTools
         private readonly ConcurrentDictionary<string, ConcurrentBag<Action<object>>> _handlers = new ConcurrentDictionary<string, ConcurrentBag<Action<object>>>();
         private ICommandFactory _commandFactory;
         private IEventFactory _eventFactory;
-        private ManualResetEvent _openEvent = new ManualResetEvent(false);
-        private ManualResetEvent _publishEvent = new ManualResetEvent(false);
         private ConcurrentDictionary<long, ManualResetEventSlim> _requestWaitHandles = new ConcurrentDictionary<long, ManualResetEventSlim>();
         private ICommandResponseFactory _responseFactory;
         private ConcurrentDictionary<long, ICommandResponse> _responses = new ConcurrentDictionary<long, ICommandResponse>();
-        private WebSocket _webSocket;
+        private SimpleWebSocket _webSocket;
         private static object _Lock = new object();
 
         public event Action<string> UnknownMessageReceived;
@@ -38,7 +35,7 @@ namespace MasterDevs.ChromeDevTools
         public void Dispose()
         {
             if (null == _webSocket) return;
-            if (_webSocket.State == WebSocketState.Open)
+            if (_webSocket.IsOpen())
             {
                 _webSocket.Close();
             }
@@ -53,7 +50,13 @@ namespace MasterDevs.ChromeDevTools
                 {
                     if (null == _webSocket)
                     {
-                        Init().Wait();
+                        Init().ContinueWith((task) =>
+                            {
+                                if (task.IsCompleted)
+                                {
+                                    Task ignore = _webSocket.ReceiveAsync();
+                                }
+                            });
                     }
                 }
             }
@@ -61,21 +64,9 @@ namespace MasterDevs.ChromeDevTools
 
         private Task Init()
         {
-            _openEvent.Reset();
-
-            _webSocket = new WebSocket(_endpoint);
-            _webSocket.EnableAutoSendPing = false;
-            _webSocket.Opened += WebSocket_Opened;
-            _webSocket.MessageReceived += WebSocket_MessageReceived;
-            _webSocket.Error += WebSocket_Error;
-            _webSocket.Closed += WebSocket_Closed;
-            _webSocket.DataReceived += WebSocket_DataReceived;
-
-            _webSocket.Open();
-            return Task.Run(() =>
-            {
-                _openEvent.WaitOne();
-            });
+            _webSocket = new SimpleWebSocket();
+            _webSocket.OnMessageReceived += OnWebSocketMessageReceived;
+            return _webSocket.ConnectAsync(_endpoint);
         }
 
         public Task<ICommandResponse> SendAsync<T>(CancellationToken cancellationToken)
@@ -187,7 +178,7 @@ namespace MasterDevs.ChromeDevTools
             return Task.Run(() =>
             {
                 EnsureInit();
-                _webSocket.Send(requestString);
+                _webSocket.SendMessageAsync(requestString);
                 requestResetEvent.Wait(cancellationToken);
                 ICommandResponse response = null;
                 _responses.TryRemove(command.Id, out response);
@@ -220,52 +211,22 @@ namespace MasterDevs.ChromeDevTools
             return null != evnt;
         }
 
-        private void WebSocket_Closed(object sender, EventArgs e)
-        {
-        }
 
-        private void WebSocket_DataReceived(object sender, DataReceivedEventArgs e)
+        private void OnWebSocketMessageReceived(string message)
         {
             ICommandResponse response;
-            if (TryGetCommandResponse(e.Data, out response))
+            if (TryGetCommandResponse(message, out response))
             {
                 HandleResponse(response);
                 return;
             }
             IEvent evnt;
-            if (TryGetEvent(e.Data, out evnt))
+            if (TryGetEvent(message, out evnt))
             {
                 HandleEvent(evnt);
                 return;
             }
-            UnknownDataReceived?.Invoke(e.Data);
-        }
-
-        private void WebSocket_Error(object sender, SuperSocket.ClientEngine.ErrorEventArgs e)
-        {
-            throw e.Exception;
-        }
-
-        private void WebSocket_MessageReceived(object sender, MessageReceivedEventArgs e)
-        {
-            ICommandResponse response;
-            if (TryGetCommandResponse(e.Message, out response))
-            {
-                HandleResponse(response);
-                return;
-            }
-            IEvent evnt;
-            if (TryGetEvent(e.Message, out evnt))
-            {
-                HandleEvent(evnt);
-                return;
-            }
-            UnknownMessageReceived?.Invoke(e.Message);
-        }
-
-        private void WebSocket_Opened(object sender, EventArgs e)
-        {
-            _openEvent.Set();
+            UnknownMessageReceived?.Invoke(message);
         }
     }
 }
