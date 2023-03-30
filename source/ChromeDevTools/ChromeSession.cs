@@ -50,7 +50,13 @@ namespace MasterDevs.ChromeDevTools
                 {
                     if (null == _webSocket)
                     {
-                        Init().Wait();
+                        Init().ContinueWith((task) =>
+                            {
+                                if (task.IsCompleted)
+                                {
+                                    Task ignore = _webSocket.ReceiveAsync();
+                                }
+                            });
                     }
                 }
             }
@@ -60,7 +66,7 @@ namespace MasterDevs.ChromeDevTools
         {
             _webSocket = new SimpleWebSocket();
             _webSocket.OnMessageReceived += OnWebSocketMessageReceived;
-            return _webSocket.Connect(_endpoint);
+            return _webSocket.ConnectAsync(_endpoint);
         }
 
         public Task<ICommandResponse> SendAsync<T>(CancellationToken cancellationToken)
@@ -172,7 +178,7 @@ namespace MasterDevs.ChromeDevTools
             return Task.Run(() =>
             {
                 EnsureInit();
-                _webSocket.SendMessage(requestString);
+                _webSocket.SendMessageAsync(requestString);
                 requestResetEvent.Wait(cancellationToken);
                 ICommandResponse response = null;
                 _responses.TryRemove(command.Id, out response);
