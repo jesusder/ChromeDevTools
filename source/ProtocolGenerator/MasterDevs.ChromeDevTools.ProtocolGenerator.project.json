@@ -6,8 +6,6 @@
     "win": {}
   },
   "dependencies": {
-    "CoolWhip": "1.0.3",
-    "Newtonsoft.Json": "9.0.1",
-    "System.Net.WebSockets.Client": "4.3.2"
+    "Newtonsoft.Json": "9.0.1"
   }
 }
