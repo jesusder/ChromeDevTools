@@ -50,13 +50,8 @@ namespace MasterDevs.ChromeDevTools
                 {
                     if (null == _webSocket)
                     {
-                        Init().ContinueWith((task) =>
-                            {
-                                if (task.IsCompleted)
-                                {
-                                    Task ignore = _webSocket.ReceiveAsync();
-                                }
-                            });
+                        Init().Wait();
+                        Task ignore = _webSocket.ReceiveAsync();
                     }
                 }
             }
